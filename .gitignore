@@ -1,0 +1,34 @@
+# Binaries
+gapistotle
+
+# Test snapshots - not part of the project
+code/
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Coverage files
+*.coverprofile
+
+# Dependency directories
+vendor/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Screen/tmux logs
+screenlog.*
