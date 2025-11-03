@@ -1,6 +1,7 @@
 # Binaries
 gapistotle
 
+
 # Test snapshots - not part of the project
 code/
 
@@ -32,3 +33,7 @@ Thumbs.db
 
 # Screen/tmux logs
 screenlog.*
+
+# claude stuff
+.claude
+CLAUDE.md
