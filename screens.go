@@ -305,15 +305,15 @@ func (m model) renderThemeEditor() string {
 	leftColumn := m.themeEditor.RenderColorPalette() + "\n\n" + m.themeEditor.RenderProperties(m.currentTheme)
 
 	leftStyle := lipgloss.NewStyle().
-		Width(m.width / 2).
 		Height(contentHeight - 3).
 		Padding(1)
+		// No width constraint - let content determine width
 
 	// Right column: Preview
 	rightColumn := m.themeEditor.RenderPreview()
 
 	rightStyle := lipgloss.NewStyle().
-		Width(m.width/2 - 2).
+		Width(m.width/2 - 10). // Give more space to left side
 		Height(contentHeight - 3).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.currentTheme.BorderColor).
@@ -329,8 +329,10 @@ func (m model) renderThemeEditor() string {
 	var help string
 	if m.themeEditor.mode == themeEditorModeProperty {
 		help = "↑↓: navigate | Enter: edit color | s: save theme | ESC: cancel"
+	} else if m.themeEditor.mode == themeEditorModeHexInput {
+		help = "Type hex code | Enter: apply | Tab: back to palette | ESC: cancel | Backspace: delete | Ctrl+U: clear"
 	} else {
-		help = "←→↑↓/hjkl: select color | Enter: apply | ESC: cancel"
+		help = "←→↑↓/hjkl: select color | Tab: hex input | Enter: apply | ESC: cancel"
 	}
 
 	footer := m.helpBarStyle().Render(help)
@@ -395,7 +397,7 @@ func (m model) renderHelp() string {
 	content += "  • Press " + keyStyle.Render("Enter") + " on any package to run its tests\n"
 	content += "  • Use " + keyStyle.Render("Tab") + " to focus right panel and navigate results\n"
 	content += "  • Coverage gaps show functions with biggest impact on coverage\n"
-	content += "  • Theme changes save automatically to " + keyStyle.Render("~/.gapistotle.conf") + "\n"
+	content += "  • Theme changes save automatically to " + keyStyle.Render("~/.config/gapistotle/config.conf") + "\n"
 	content += "  • Custom themes go in " + keyStyle.Render("~/.config/gapistotle/themes/") + "\n\n"
 
 	content += lipgloss.NewStyle().Foreground(m.currentTheme.HelpColor).Render("Press ESC to return | ↑↓/jk: scroll | g/G: top/bottom | PgUp/PgDn: page")

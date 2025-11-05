@@ -11,6 +11,7 @@ const (
 	themeEditorModeProperty = "property"
 	themeEditorModeColor    = "color"
 	themeEditorModeSave     = "save"
+	themeEditorModeHexInput = "hexinput"
 )
 
 // Color palette - Curated visually distinct colors
@@ -80,9 +81,11 @@ type ThemeEditorState struct {
 	properties       []ThemeProperty
 	selectedProperty int
 	selectedColor    int
-	mode             string // "property", "color", or "save"
+	mode             string // "property", "color", "save", or "hexinput"
 	saveThemeName    string // For text input when saving
 	saveError        string // Error message if save fails
+	hexInput         string // For hex color input
+	hexError         string // Error message if hex is invalid
 }
 
 func newThemeEditorState(currentTheme Theme) ThemeEditorState {
@@ -202,7 +205,15 @@ func (te *ThemeEditorState) SetCurrentPropertyColor(color lipgloss.Color) {
 // RenderColorPalette renders the color palette with selection
 func (te *ThemeEditorState) RenderColorPalette() string {
 	var result string
-	result += lipgloss.NewStyle().Bold(true).Render("Color Palette") + "\n\n"
+
+	// Show which property we're editing when in color/hex mode
+	header := "Color Palette"
+	if te.mode == themeEditorModeColor || te.mode == themeEditorModeHexInput {
+		if te.selectedProperty < len(te.properties) {
+			header = "Color Palette - Editing: " + te.properties[te.selectedProperty].Name
+		}
+	}
+	result += lipgloss.NewStyle().Bold(true).Render(header) + "\n\n"
 
 	totalColors := len(colorPalette)
 	colsPerRow := 8
@@ -210,24 +221,22 @@ func (te *ThemeEditorState) RenderColorPalette() string {
 
 	// Show all colors in rows of 8
 	for row := 0; row < rows; row++ {
-		// First render the selection indicator row if in color mode
-		if te.mode == themeEditorModeColor {
-			indicatorLine := ""
-			for col := 0; col < colsPerRow; col++ {
-				idx := row*colsPerRow + col
-				if idx >= totalColors {
-					break
-				}
-				if idx == te.selectedColor {
-					indicatorLine += "  ▼  "
-				} else {
-					indicatorLine += "     "
-				}
+		// First row: top border
+		for col := 0; col < colsPerRow; col++ {
+			idx := row*colsPerRow + col
+			if idx >= totalColors {
+				break
 			}
-			result += lipgloss.NewStyle().Foreground(lipgloss.Color("#ffff00")).Render(indicatorLine) + "\n"
-		}
 
-		// Render the color boxes
+			if te.mode == themeEditorModeColor && idx == te.selectedColor {
+				result += lipgloss.NewStyle().Foreground(lipgloss.Color("#ffff00")).Render("┌─────┐")
+			} else {
+				result += "       "
+			}
+		}
+		result += "\n"
+
+		// Second row: color boxes with side borders
 		for col := 0; col < colsPerRow; col++ {
 			idx := row*colsPerRow + col
 			if idx >= totalColors {
@@ -237,11 +246,77 @@ func (te *ThemeEditorState) RenderColorPalette() string {
 
 			style := lipgloss.NewStyle().
 				Background(color).
-				Foreground(color) // Make text same as background
+				Foreground(color)
 
-			result += style.Render(" ███ ")
+			if te.mode == themeEditorModeColor && idx == te.selectedColor {
+				borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffff00"))
+				result += borderStyle.Render("│") + style.Render(" ███ ") + borderStyle.Render("│")
+			} else {
+				result += " " + style.Render(" ███ ") + " "
+			}
 		}
 		result += "\n"
+
+		// Third row: bottom border
+		for col := 0; col < colsPerRow; col++ {
+			idx := row*colsPerRow + col
+			if idx >= totalColors {
+				break
+			}
+
+			if te.mode == themeEditorModeColor && idx == te.selectedColor {
+				result += lipgloss.NewStyle().Foreground(lipgloss.Color("#ffff00")).Render("└─────┘")
+			} else {
+				result += "       "
+			}
+		}
+		result += "\n"
+	}
+
+	// Add hex input box when in color or hexinput mode
+	if te.mode == themeEditorModeColor || te.mode == themeEditorModeHexInput {
+		result += "\n"
+
+		// Show different label based on mode
+		label := "Or enter hex code:"
+		if te.mode == themeEditorModeHexInput {
+			label = "► Enter hex code:" // Arrow indicates active
+		}
+		result += lipgloss.NewStyle().Bold(true).Render(label) + "\n"
+
+		// Highlight border when active
+		borderColor := lipgloss.Color("#666666")
+		if te.mode == themeEditorModeHexInput {
+			borderColor = lipgloss.Color("#ffff00") // Yellow when active
+		}
+
+		inputStyle := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(borderColor).
+			Padding(0, 1).
+			Width(20)
+
+		// Show cursor if in hex input mode
+		cursor := ""
+		if te.mode == themeEditorModeHexInput {
+			cursor = "_"
+		}
+
+		result += inputStyle.Render(te.hexInput+cursor) + "\n"
+
+		// Show error if any
+		if te.hexError != "" {
+			errorStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#ff0000")).
+				Bold(true)
+			result += errorStyle.Render(te.hexError) + "\n"
+		} else {
+			hint := "(e.g., #fff or #FF5733)"
+			if te.mode == themeEditorModeColor {
+				hint += " - Press Tab to type here"
+			}
+			result += lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render(hint) + "\n"
+		}
 	}
 
 	return result
@@ -286,19 +361,19 @@ func (te *ThemeEditorState) RenderProperties(theme Theme) string {
 			Width(3).
 			Render("   ")
 
-		line := fmt.Sprintf("%s  %s", colorBox, prop.Name)
-
-		if te.mode == themeEditorModeProperty && i == te.selectedProperty {
-			// Highlight selected property
-			line = lipgloss.NewStyle().
-				Background(theme.SelectedBg).
-				Foreground(theme.SelectedFg).
+		// Use arrow indicator for selected/editing property
+		var indicator string
+		if i == te.selectedProperty {
+			// Show bright yellow arrow for currently selected/editing property
+			indicator = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#ffff00")).
 				Bold(true).
-				Render(" " + line + " ")
+				Render(">>> ")
 		} else {
-			line = "  " + line
+			indicator = "    "
 		}
 
+		line := fmt.Sprintf("%s%s  %s", indicator, colorBox, prop.Name)
 		result += line + "\n"
 	}
 

@@ -35,23 +35,23 @@ type Theme struct {
 }
 
 var themes = map[string]Theme{
-	"default": {
-		Name:             "default",
-		SelectedBg:       lipgloss.Color("62"),  // Blue background
-		SelectedFg:       lipgloss.Color("230"), // Light yellow text
-		NormalFg:         lipgloss.Color("252"), // Light gray
-		SeparatorColor:   lipgloss.Color("240"), // Dark gray
-		HelpColor:        lipgloss.Color("241"), // Medium gray
-		TestCountColor:   lipgloss.Color("241"), // Medium gray
-		BorderColor:      lipgloss.Color("240"), // Dark gray
-		TreeSymbolColor:  lipgloss.Color("243"), // Tree lines
-		CoverageGoodFg:   lipgloss.Color("46"),  // Green
-		CoverageMediumFg: lipgloss.Color("226"), // Yellow
-		CoveragePoorFg:   lipgloss.Color("196"), // Red
-		MenuNormalFg:     lipgloss.Color("241"), // Dimmed when inactive
-		MenuActiveFg:     lipgloss.Color("252"), // Normal when active
-		MenuSelectedBg:   lipgloss.Color("62"),  // Blue background
-		MenuSelectedFg:   lipgloss.Color("230"), // Light yellow text
+	"gapistotle": {
+		Name:             "gapistotle",
+		SelectedBg:       lipgloss.Color("#003746"),
+		SelectedFg:       lipgloss.Color("#b2b2b2"),
+		NormalFg:         lipgloss.Color("#84804a"),
+		SeparatorColor:   lipgloss.Color("#f5ed8b"),
+		HelpColor:        lipgloss.Color("#4c90a4"),
+		TestCountColor:   lipgloss.Color("#4c90a4"),
+		BorderColor:      lipgloss.Color("#f5ed8b"),
+		TreeSymbolColor:  lipgloss.Color("#8f6dc0"),
+		CoverageGoodFg:   lipgloss.Color("#a3be8c"),
+		CoverageMediumFg: lipgloss.Color("#ebcb8b"),
+		CoveragePoorFg:   lipgloss.Color("#bf616a"),
+		MenuNormalFg:     lipgloss.Color("#f53900"),
+		MenuActiveFg:     lipgloss.Color("#d8dee9"),
+		MenuSelectedBg:   lipgloss.Color("#7e5f00"),
+		MenuSelectedFg:   lipgloss.Color("#ffffff"),
 	},
 	"dracula": {
 		Name:             "dracula",
@@ -109,13 +109,13 @@ var themes = map[string]Theme{
 	},
 }
 
-// GetTheme returns a theme by name, or default if not found
+// GetTheme returns a theme by name, or gapistotle if not found
 func GetTheme(name string) Theme {
 	allThemes := GetAllThemes()
 	if theme, ok := allThemes[name]; ok {
 		return theme
 	}
-	return themes["default"]
+	return themes["gapistotle"]
 }
 
 // ListThemes returns all available theme names (built-in + custom)

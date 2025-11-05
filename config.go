@@ -20,11 +20,19 @@ type Config struct {
 }
 
 func getConfigPath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ".gapistotle.conf" // Fallback to current directory
+	// 1. Check XDG_CONFIG_HOME environment variable
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "gapistotle", "config.conf")
 	}
-	return filepath.Join(homeDir, ".gapistotle.conf")
+
+	// 2. Fallback to ~/.config/gapistotle/config.conf
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		return filepath.Join(homeDir, ".config", "gapistotle", "config.conf")
+	}
+
+	// 3. Last resort: current directory
+	return "gapistotle.conf"
 }
 
 // ResolveConfigPath determines the config file path to use
@@ -47,13 +55,18 @@ func ResolveConfigPath(flagPath string) string {
 // LoadConfig loads the config file from the specified path
 func LoadConfig(configPath string) Config {
 	config := Config{
-		CurrentTheme:         "default",
+		CurrentTheme:         "gapistotle",
 		LeftPanelWidth:       defaultLeftPanelWidth,
 		MinPanelWidth:        minPanelWidth,
 		MaxPanelWidthPercent: maxPanelWidthPercent,
 		PanelResizeIncrement: panelResizeIncrement,
 		LogPath:              "/tmp/gapistotle.log",
 		LogLevel:             "debug",
+	}
+
+	// Try to migrate from old location if new location doesn't exist
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		migrateOldConfig(configPath)
 	}
 
 	file, err := os.Open(configPath)
@@ -110,6 +123,12 @@ func LoadConfig(configPath string) Config {
 
 // SaveConfig saves the config file
 func SaveConfig(config Config, configPath string) error {
+	// Ensure the directory exists
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
 	file, err := os.Create(configPath)
 	if err != nil {
 		return err
@@ -135,6 +154,44 @@ func SaveConfig(config Config, configPath string) error {
 	writer.WriteString("logLevel=" + config.LogLevel + "\n")
 
 	return writer.Flush()
+}
+
+// migrateOldConfig attempts to migrate from old config location (~/.gapistotle.conf)
+func migrateOldConfig(newPath string) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
+	oldPath := filepath.Join(homeDir, ".gapistotle.conf")
+
+	// Check if old config exists
+	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
+		return
+	}
+
+	// Read old config
+	oldData, err := os.ReadFile(oldPath)
+	if err != nil {
+		return
+	}
+
+	// Ensure new directory exists
+	newDir := filepath.Dir(newPath)
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		return
+	}
+
+	// Write to new location
+	if err := os.WriteFile(newPath, oldData, 0644); err != nil {
+		return
+	}
+
+	// Log the migration
+	LogInfo("Migrated config file", "old_path", oldPath, "new_path", newPath)
+
+	// Optionally remove old config (commented out for safety)
+	// os.Remove(oldPath)
 }
 
 // expandPath expands ~ to home directory

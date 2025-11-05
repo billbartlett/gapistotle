@@ -106,12 +106,26 @@ func handleThemeEditorKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 		return false, nil
 	}
 
-	// Save mode is handled by handleTextInput
-	if m.themeEditor.mode == themeEditorModeSave {
+	// Save mode and hex input mode are handled by handleTextInput
+	if m.themeEditor.mode == themeEditorModeSave || m.themeEditor.mode == themeEditorModeHexInput {
 		return false, nil
 	}
 
 	switch msg.String() {
+	case "tab":
+		if m.themeEditor.mode == themeEditorModeColor {
+			// Switch to hex input mode
+			m.themeEditor.mode = themeEditorModeHexInput
+			m.themeEditor.hexError = ""
+			return true, nil
+		} else if m.themeEditor.mode == themeEditorModeHexInput {
+			// Switch back to color palette mode
+			m.themeEditor.mode = themeEditorModeColor
+			m.themeEditor.hexInput = ""
+			m.themeEditor.hexError = ""
+			return true, nil
+		}
+
 	case "s":
 		if m.themeEditor.mode == themeEditorModeProperty {
 			// Enter save mode with pre-populated theme name
@@ -149,8 +163,17 @@ func handleThemeEditorKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 		}
 		return true, nil
 
-	case "left", "h":
+	case "left":
 		if m.themeEditor.mode == themeEditorModeColor {
+			if m.themeEditor.selectedColor%colorPaletteColumns > 0 {
+				m.themeEditor.selectedColor--
+			}
+			return true, nil
+		}
+
+	case "h":
+		if m.themeEditor.mode == themeEditorModeColor {
+			// Left navigation
 			if m.themeEditor.selectedColor%colorPaletteColumns > 0 {
 				m.themeEditor.selectedColor--
 			}
@@ -183,6 +206,24 @@ func handleThemeEditorKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.themeEditor.mode = themeEditorModeProperty
 		}
 		return true, nil
+
+	default:
+		// If in color mode and user types a hex character, activate hex input mode
+		if m.themeEditor.mode == themeEditorModeColor {
+			key := msg.String()
+			if len(key) == 1 {
+				char := key[0]
+				// Check if it's a valid hex character or #
+				if char == '#' || (char >= '0' && char <= '9') ||
+					(char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F') {
+					// Activate hex input mode and add this character
+					m.themeEditor.mode = themeEditorModeHexInput
+					m.themeEditor.hexInput = key
+					m.themeEditor.hexError = ""
+					return true, nil
+				}
+			}
+		}
 	}
 
 	return false, nil

@@ -4,12 +4,23 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-// handleTextInput handles text input for theme save mode
+// handleTextInput handles text input for theme save mode and hex input mode
 // Returns true if the input was consumed
 func handleTextInput(m *model, msg tea.KeyMsg) bool {
-	if m.currentScreen != screenThemeEditor || m.themeEditor.mode != themeEditorModeSave {
+	if m.currentScreen != screenThemeEditor {
+		return false
+	}
+
+	// Handle hex input mode
+	if m.themeEditor.mode == themeEditorModeHexInput {
+		return handleHexInput(m, msg)
+	}
+
+	// Handle save mode
+	if m.themeEditor.mode != themeEditorModeSave {
 		return false
 	}
 
@@ -87,6 +98,96 @@ func handleTextInput(m *model, msg tea.KeyMsg) bool {
 			if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
 				(char >= '0' && char <= '9') || char == '-' || char == '_' {
 				m.themeEditor.saveThemeName += key
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// handleHexInput handles text input for hex color input mode
+// Returns true if the input was consumed
+func handleHexInput(m *model, msg tea.KeyMsg) bool {
+	switch msg.String() {
+	case "tab":
+		// Switch back to color palette mode
+		m.themeEditor.mode = themeEditorModeColor
+		m.themeEditor.hexInput = ""
+		m.themeEditor.hexError = ""
+		return true
+
+	case "backspace":
+		if len(m.themeEditor.hexInput) > 0 {
+			m.themeEditor.hexInput = m.themeEditor.hexInput[:len(m.themeEditor.hexInput)-1]
+			m.themeEditor.hexError = "" // Clear error on edit
+		}
+		return true
+
+	case "ctrl+u":
+		// Clear entire input
+		m.themeEditor.hexInput = ""
+		m.themeEditor.hexError = ""
+		return true
+
+	case "enter":
+		// Validate and apply the hex color
+		hexColor := m.themeEditor.hexInput
+
+		// Add # prefix if not present
+		if len(hexColor) > 0 && hexColor[0] != '#' {
+			hexColor = "#" + hexColor
+		}
+
+		// Validate hex format (should be #RGB, #RRGGBB, or #RRGGBBAA)
+		validHex := false
+		if len(hexColor) == 4 || len(hexColor) == 7 || len(hexColor) == 9 {
+			validHex = true
+			for i := 1; i < len(hexColor); i++ {
+				ch := hexColor[i]
+				if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+					validHex = false
+					break
+				}
+			}
+		}
+
+		if !validHex {
+			m.themeEditor.hexError = "Invalid hex color (use #RGB or #RRGGBB)"
+		} else {
+			// Apply the color
+			m.themeEditor.SetCurrentPropertyColor(lipgloss.Color(hexColor))
+			// Return to color mode
+			m.themeEditor.mode = themeEditorModeColor
+			m.themeEditor.hexInput = ""
+			m.themeEditor.hexError = ""
+		}
+		return true
+
+	case "esc":
+		// Cancel hex input mode
+		m.themeEditor.mode = themeEditorModeColor
+		m.themeEditor.hexInput = ""
+		m.themeEditor.hexError = ""
+		return true
+
+	default:
+		// Handle hex characters (0-9, a-f, A-F, #)
+		key := msg.String()
+		if len(key) == 1 {
+			char := key[0]
+			// Allow # only as first character
+			if char == '#' && len(m.themeEditor.hexInput) == 0 {
+				m.themeEditor.hexInput += key
+				return true
+			}
+			// Allow hex digits
+			if (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F') {
+				// Limit length to 9 characters (#RRGGBBAA)
+				if len(m.themeEditor.hexInput) < 9 {
+					m.themeEditor.hexInput += key
+					m.themeEditor.hexError = "" // Clear error on edit
+				}
 				return true
 			}
 		}
