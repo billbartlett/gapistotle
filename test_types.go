@@ -47,6 +47,7 @@ type TestResult struct {
 	Status   string // "PASS", "FAIL", "SKIP"
 	Duration time.Duration
 	Output   string // Detailed output for failed tests
+	TestType string // "unit", "integration", or "" for unknown
 }
 
 // FileCoverage represents coverage for a single file

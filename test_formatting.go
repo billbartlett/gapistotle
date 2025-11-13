@@ -2,10 +2,52 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+// renderTestGroup renders a group of tests (unit or integration)
+func renderTestGroup(tests []TestResult, output *strings.Builder, passStyle, failStyle, normalStyle, metricStyle lipgloss.Style) {
+	// Group by status: FAIL, PASS, SKIP
+	var failed, passed, skipped []TestResult
+	for _, test := range tests {
+		switch test.Status {
+		case "FAIL":
+			failed = append(failed, test)
+		case "PASS":
+			passed = append(passed, test)
+		case "SKIP":
+			skipped = append(skipped, test)
+		}
+	}
+
+	// Sort passed tests by duration (slowest first)
+	sort.Slice(passed, func(i, j int) bool {
+		return passed[i].Duration > passed[j].Duration
+	})
+
+	// Show failures (just names, details shown above)
+	for _, test := range failed {
+		output.WriteString(failStyle.Render("  [FAIL] ") +
+			normalStyle.Render(fmt.Sprintf("%-45s", test.Name)) +
+			metricStyle.Render(fmt.Sprintf(" %8s", formatDuration(test.Duration))) + "\n")
+	}
+
+	// Show passes (slowest first)
+	for _, test := range passed {
+		output.WriteString(passStyle.Render("  [PASS] ") +
+			normalStyle.Render(fmt.Sprintf("%-45s", test.Name)) +
+			metricStyle.Render(fmt.Sprintf(" %8s", formatDuration(test.Duration))) + "\n")
+	}
+
+	// Show skipped
+	for _, test := range skipped {
+		output.WriteString(normalStyle.Render(fmt.Sprintf("  [SKIP] %-45s (skipped)", test.Name)) + "\n")
+	}
+}
 
 // FormatTestResultSummary formats a compact summary of test results
 func FormatTestResultSummary(result *PackageTestResult, theme Theme, selectedButton int) string {
@@ -36,10 +78,22 @@ func FormatTestResultSummary(result *PackageTestResult, theme Theme, selectedBut
 	output.WriteString(normalStyle.Render("Coverage: ") +
 		metricStyle.Render(fmt.Sprintf("%.1f%%", result.Coverage)) + "\n")
 
-	// Show time or "(cached)" if no duration
+	// Calculate sum of individual test times
+	var testTimeSum time.Duration
+	for _, test := range result.Tests {
+		testTimeSum += test.Duration
+	}
+
+	// Show time breakdown
 	if result.Duration > 0 {
-		output.WriteString(normalStyle.Render("Total Time: ") +
-			metricStyle.Render(formatDuration(result.Duration)) + "\n\n")
+		setupTime := result.Duration - testTimeSum
+		output.WriteString(normalStyle.Render("Elapsed Time: ") +
+			metricStyle.Render(formatDuration(result.Duration)) +
+			normalStyle.Render("  [tests: ") +
+			metricStyle.Render(formatDuration(testTimeSum)) +
+			normalStyle.Render(" | setup: ") +
+			metricStyle.Render(formatDuration(setupTime)) +
+			normalStyle.Render("]") + "\n\n")
 	} else {
 		output.WriteString(normalStyle.Render("Total Time: ") +
 			metricStyle.Render("(cached)") + "\n\n")
@@ -276,10 +330,22 @@ func FormatTestResult(result *PackageTestResult, theme Theme) string {
 	output.WriteString(normalStyle.Render("Coverage: ") +
 		metricStyle.Render(fmt.Sprintf("%.1f%%", result.Coverage)) + "\n")
 
-	// Show time or "(cached)" if no duration
+	// Calculate sum of individual test times
+	var testTimeSum time.Duration
+	for _, test := range result.Tests {
+		testTimeSum += test.Duration
+	}
+
+	// Show time breakdown
 	if result.Duration > 0 {
-		output.WriteString(normalStyle.Render("Total Time: ") +
-			metricStyle.Render(formatDuration(result.Duration)) + "\n\n")
+		setupTime := result.Duration - testTimeSum
+		output.WriteString(normalStyle.Render("Elapsed Time: ") +
+			metricStyle.Render(formatDuration(result.Duration)) +
+			normalStyle.Render("  [tests: ") +
+			metricStyle.Render(formatDuration(testTimeSum)) +
+			normalStyle.Render(" | setup: ") +
+			metricStyle.Render(formatDuration(setupTime)) +
+			normalStyle.Render("]") + "\n\n")
 	} else {
 		output.WriteString(normalStyle.Render("Total Time: ") +
 			metricStyle.Render("(cached)") + "\n\n")
@@ -326,41 +392,31 @@ func FormatTestResult(result *PackageTestResult, theme Theme) string {
 		}
 	}
 
-	// Summary of all tests
+	// Summary of all tests - separate unit and integration
 	if len(result.Tests) > 0 {
-		output.WriteString(normalStyle.Render("All Tests:") + "\n")
-		output.WriteString(separatorStyle.Render("-------------------------------------------") + "\n")
-
-		// Group by status: FAIL, PASS, SKIP
-		var failed, passed, skipped []TestResult
+		// Group by test type and status
+		var unitTests, integrationTests []TestResult
 		for _, test := range result.Tests {
-			switch test.Status {
-			case "FAIL":
-				failed = append(failed, test)
-			case "PASS":
-				passed = append(passed, test)
-			case "SKIP":
-				skipped = append(skipped, test)
+			if test.TestType == "integration" {
+				integrationTests = append(integrationTests, test)
+			} else {
+				unitTests = append(unitTests, test)
 			}
 		}
 
-		// Show failures (just names, details shown above)
-		for _, test := range failed {
-			output.WriteString(failStyle.Render("  [FAIL] ") +
-				normalStyle.Render(fmt.Sprintf("%-45s", test.Name)) +
-				metricStyle.Render(fmt.Sprintf(" %8s", formatDuration(test.Duration))) + "\n")
+		// Show unit tests section if any exist
+		if len(unitTests) > 0 {
+			output.WriteString(normalStyle.Render("Unit Tests:") + "\n")
+			output.WriteString(separatorStyle.Render("-------------------------------------------") + "\n")
+			renderTestGroup(unitTests, &output, passStyle, failStyle, normalStyle, metricStyle)
+			output.WriteString("\n")
 		}
 
-		// Show passes
-		for _, test := range passed {
-			output.WriteString(passStyle.Render("  [PASS] ") +
-				normalStyle.Render(fmt.Sprintf("%-45s", test.Name)) +
-				metricStyle.Render(fmt.Sprintf(" %8s", formatDuration(test.Duration))) + "\n")
-		}
-
-		// Show skipped
-		for _, test := range skipped {
-			output.WriteString(normalStyle.Render(fmt.Sprintf("  [SKIP] %-45s (skipped)", test.Name)) + "\n")
+		// Show integration tests section if any exist
+		if len(integrationTests) > 0 {
+			output.WriteString(normalStyle.Render("Integration Tests:") + "\n")
+			output.WriteString(separatorStyle.Render("-------------------------------------------") + "\n")
+			renderTestGroup(integrationTests, &output, passStyle, failStyle, normalStyle, metricStyle)
 		}
 
 	} else {

@@ -151,9 +151,9 @@ Currently settings are in config file. Add UI for:
 - Debounce 300-500ms for editor save bursts
 - Knight Rider style "Cylon" scanner indicator:
   ```
-  F1: menu | [*       ] watching | ↑↓/jk: navigate
-  F1: menu | [ *      ] watching | ↑↓/jk: navigate
-  F1: menu | [  *     ] watching | ↑↓/jk: navigate
+  `: menu | [*       ] watching | ↑↓/jk: navigate
+  `: menu | [ *      ] watching | ↑↓/jk: navigate
+  `: menu | [  *     ] watching | ↑↓/jk: navigate
   ```
 - Toggle with `w` key
 - Config option: `watchDebounceMs=500`

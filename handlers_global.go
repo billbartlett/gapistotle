@@ -202,7 +202,7 @@ func handleGlobalKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 	case "ctrl+c":
 		return true, tea.Quit
 
-	case "f1":
+	case "`":
 		m.menuActive = !m.menuActive
 		return true, nil
 
@@ -222,6 +222,19 @@ func handleGlobalKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 		} else if m.currentScreen == screenThemeMenu {
 			m.currentScreen = screenMain
 			m.menuActive = false
+		} else if m.currentScreen == screenTestsMenu {
+			m.currentScreen = screenMain
+			m.menuActive = false
+		} else if m.currentScreen == screenTestModeSelection {
+			m.currentScreen = screenTestsMenu
+		} else if m.currentScreen == screenFullTestResults {
+			// Return from full-screen test results to main
+			m.currentScreen = screenMain
+			m.fullScreenScroll = 0
+		} else if m.currentScreen == screenFullCoverageGaps {
+			// Return from full-screen coverage gaps to main
+			m.currentScreen = screenMain
+			m.fullScreenScroll = 0
 		} else if m.currentScreen != screenMain {
 			// Reset screen-specific state when returning to main
 			if m.currentScreen == screenHelp {
@@ -269,22 +282,9 @@ func handleMenuKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 			m.currentScreen = screenSettings
 			m.menuActive = false
 		case 1: // Tests
+			m.currentScreen = screenTestsMenu
+			m.testsMenuIndex = 0
 			m.menuActive = false
-			// Run tests for all packages
-			// Reset view state when running tests
-			m.rightPanelView = viewSummary
-			m.summaryButtonIndex = 0
-			m.rightPanelScroll = 0
-			var cmds []tea.Cmd
-			for _, pkg := range m.testPackages {
-				// Clear old results and errors
-				delete(m.testResults, pkg.Name)
-				delete(m.testErrors, pkg.Name)
-				// Mark test as running
-				m.testsRunning[pkg.Name] = true
-				cmds = append(cmds, runTestsCmd(pkg.Path, pkg.Name))
-			}
-			return true, tea.Batch(cmds...)
 		case 2: // Theme
 			m.currentScreen = screenThemeMenu
 			m.themeMenuIndex = 0

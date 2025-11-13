@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,9 +11,42 @@ import (
 
 // TestPackage represents a Go package with tests
 type TestPackage struct {
-	Name      string
-	Path      string
-	TestFiles []string
+	Name                 string
+	Path                 string
+	TestFiles            []string
+	HasIntegrationTests  bool
+}
+
+// hasIntegrationBuildTag checks if a file has integration test build tags
+func hasIntegrationBuildTag(filePath string) bool {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	// Only check first 10 lines (build tags must be at top of file)
+	for scanner.Scan() && lineCount < 10 {
+		line := strings.TrimSpace(scanner.Text())
+		lineCount++
+
+		// Check for both old and new build tag formats
+		if strings.Contains(line, "//go:build") && strings.Contains(line, "integration") {
+			return true
+		}
+		if strings.Contains(line, "// +build") && strings.Contains(line, "integration") {
+			return true
+		}
+
+		// Stop at package declaration
+		if strings.HasPrefix(line, "package ") {
+			break
+		}
+	}
+
+	return false
 }
 
 // ScanForTests recursively scans a directory for *_test.go files
@@ -40,9 +74,16 @@ func ScanForTests(rootPath string) ([]TestPackage, error) {
 					Name:      relDir,
 					Path:      dir,
 					TestFiles: []string{},
+					HasIntegrationTests: false,
 				}
 			}
 			packages[dir].TestFiles = append(packages[dir].TestFiles, info.Name())
+
+			// Check if this test file has integration build tags
+			if hasIntegrationBuildTag(path) {
+				packages[dir].HasIntegrationTests = true
+				LogDebug("Found integration tests", "package", relDir, "file", info.Name())
+			}
 		}
 
 		return nil
@@ -96,6 +137,11 @@ func RenderTestTree(packages []TestPackage, selectedIndex int, theme Theme) stri
 		pkgName := pkg.Name
 		if pkgName == "" || pkgName == "." {
 			pkgName = "."
+		}
+
+		// Add [i] indicator if package has integration tests
+		if pkg.HasIntegrationTests {
+			pkgName += " [i]"
 		}
 
 		sb.WriteString(treeStyle.Render(prefix))

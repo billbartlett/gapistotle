@@ -160,23 +160,100 @@ func (m *model) renderMainScreen() string {
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, separator, rightPanel)
 
 	// Help text - show different text based on focus and view
+	// Get test mode for currently selected package
+	var modeIndicator string
+	if m.selectedIndex >= 0 && m.selectedIndex < len(m.testPackages) {
+		selectedPkg := m.testPackages[m.selectedIndex]
+		pkgMode := m.getTestModeForPath(selectedPkg.Path)
+		modeIndicator = fmt.Sprintf("Mode: %s", pkgMode)
+	} else {
+		modeIndicator = fmt.Sprintf("Mode: %s", m.currentTestMode)
+	}
 	var helpText string
 	if m.currentFocus == focusLeftPanel {
-		helpText = fmt.Sprintf("F1: menu | ↑↓/jk: navigate | Tab: switch panel | ]/[: resize | t: theme (%s) | q: quit", m.currentTheme.Name)
+		helpText = fmt.Sprintf("%s | `: menu | ↑↓/jk: navigate | f: fullscreen | Tab: switch panel | ]/[: resize | t: theme (%s) | q: quit", modeIndicator, m.currentTheme.Name)
 	} else {
 		// In right panel - show context-specific help
 		if m.rightPanelView == viewCoverageGaps {
-			helpText = fmt.Sprintf("F1: menu | ESC: return to summary | Tab: switch panel | t: theme (%s) | q: quit", m.currentTheme.Name)
+			helpText = fmt.Sprintf("%s | `: menu | ESC: return to summary | Tab: switch panel | t: theme (%s) | q: quit", modeIndicator, m.currentTheme.Name)
 		} else if m.rightPanelView == viewSummary {
-			helpText = fmt.Sprintf("F1: menu | Enter: select | Tab: switch panel | ]/[: resize | t: theme (%s) | q: quit", m.currentTheme.Name)
+			helpText = fmt.Sprintf("%s | `: menu | Enter: select | Tab: switch panel | ]/[: resize | t: theme (%s) | q: quit", modeIndicator, m.currentTheme.Name)
 		} else {
-			helpText = fmt.Sprintf("F1: menu | ↑↓/jk: scroll | Tab: switch panel | ]/[: resize | t: theme (%s) | q: quit", m.currentTheme.Name)
+			helpText = fmt.Sprintf("%s | `: menu | ↑↓/jk: scroll | Tab: switch panel | ]/[: resize | t: theme (%s) | q: quit", modeIndicator, m.currentTheme.Name)
 		}
 	}
 	help := helpStyle.Render(helpText)
 
 	// Combine everything
 	return lipgloss.JoinVertical(lipgloss.Left, panels, help)
+}
+
+func (m model) renderTestsMenu() string {
+	contentHeight := m.height - MenuBarH
+
+	// Show current mode in header
+	modeDisplay := string(m.currentTestMode)
+	header := m.headerStyle().Render("═══ TESTS MENU ═══") + "\n" +
+		m.helpBarStyle().Render("Current Mode: "+modeDisplay)
+
+	// Content
+	contentStyle := m.contentAreaStyle(contentHeight - 3)
+
+	var content string
+	content += boldSectionHeader().Render("Test Options") + "\n\n"
+
+	for i, item := range m.testsMenuItems {
+		if i == m.testsMenuIndex {
+			content += m.selectedItemStyle().Render(" > "+item+" ") + "\n"
+		} else {
+			content += m.normalItemStyle().Render("   "+item) + "\n"
+		}
+	}
+
+	footer := m.helpBarStyle().Render("↑↓/jk: navigate | Enter: select | ESC: back")
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, contentStyle.Render(content), footer)
+}
+
+func (m model) renderTestModeSelection() string {
+	contentHeight := m.height - MenuBarH
+
+	header := m.headerStyle().Render("═══ TEST MODE SELECTION ═══")
+
+	// Content
+	contentStyle := m.contentAreaStyle(contentHeight - 2)
+
+	var content string
+	content += boldSectionHeader().Render("Select Test Mode") + "\n\n"
+
+	for i, item := range m.testModeItems {
+		var line string
+		if i == m.testModeIndex {
+			line = " > " + item
+			if i == 0 && m.currentTestMode == testModeUnit {
+				line += " [current]"
+			} else if i == 1 && m.currentTestMode == testModeIntegration {
+				line += " [current]"
+			} else if i == 2 && m.currentTestMode == testModeAll {
+				line += " [current]"
+			}
+			content += m.selectedItemStyle().Render(line) + "\n"
+		} else {
+			line = "   " + item
+			if i == 0 && m.currentTestMode == testModeUnit {
+				line += " [current]"
+			} else if i == 1 && m.currentTestMode == testModeIntegration {
+				line += " [current]"
+			} else if i == 2 && m.currentTestMode == testModeAll {
+				line += " [current]"
+			}
+			content += m.normalItemStyle().Render(line) + "\n"
+		}
+	}
+
+	footer := m.helpBarStyle().Render("↑↓/jk: navigate | Enter: select | ESC: back")
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, contentStyle.Render(content), footer)
 }
 
 func (m model) renderThemeMenu() string {
@@ -354,12 +431,12 @@ func (m model) renderHelp() string {
 	keyStyle := lipgloss.NewStyle().Foreground(m.currentTheme.CoverageGoodFg)
 
 	content := headerStyle.Render("GAPISTOTLE HELP") + "\n"
-	content += lipgloss.NewStyle().Foreground(m.currentTheme.HelpColor).Render("Know Thy Code") + "\n\n"
+	content += lipgloss.NewStyle().Foreground(m.currentTheme.HelpColor).Render("v"+version+" - Know Thy Code") + "\n\n"
 
 	// General Navigation
 	content += sectionStyle.Render("═══ GENERAL ═══") + "\n"
 	content += keyStyle.Render("  ?         ") + " - Show this help screen\n"
-	content += keyStyle.Render("  F1        ") + " - Toggle menu\n"
+	content += keyStyle.Render("  `         ") + " - Toggle menu (backtick key)\n"
 	content += keyStyle.Render("  ←→ / h l  ") + " - Navigate menu items\n"
 	content += keyStyle.Render("  Enter     ") + " - Select menu item / Run tests\n"
 	content += keyStyle.Render("  Tab       ") + " - Switch focus (left/right panel)\n"
@@ -382,12 +459,13 @@ func (m model) renderHelp() string {
 	content += keyStyle.Render("  PgUp      ") + " - Scroll up one page\n"
 	content += keyStyle.Render("  PgDn      ") + " - Scroll down one page\n"
 	content += keyStyle.Render("  Enter     ") + " - Select button (TEST DETAILS / COVERAGE GAPS)\n"
+	content += keyStyle.Render("  f         ") + " - Full-screen mode (shows highlighted view)\n"
 	content += keyStyle.Render("  ESC       ") + " - Return to summary view\n\n"
 
 	// Themes
 	content += sectionStyle.Render("═══ THEMES ═══") + "\n"
 	content += keyStyle.Render("  t         ") + " - Cycle through themes quickly\n"
-	content += keyStyle.Render("  F1 → Theme") + " - Access theme menu\n"
+	content += keyStyle.Render("  ` → Theme ") + " - Access theme menu (backtick key)\n"
 	content += "    - Select Theme: Choose from all available themes\n"
 	content += "    - Edit Theme: Customize colors with live preview\n"
 	content += "    - Reload Themes: Refresh theme list\n\n"
@@ -397,7 +475,7 @@ func (m model) renderHelp() string {
 	content += "  • Press " + keyStyle.Render("Enter") + " on any package to run its tests\n"
 	content += "  • Use " + keyStyle.Render("Tab") + " to focus right panel and navigate results\n"
 	content += "  • Coverage gaps show functions with biggest impact on coverage\n"
-	content += "  • Theme changes save automatically to " + keyStyle.Render("~/.config/gapistotle/config.conf") + "\n"
+	content += "  • Theme selection saves automatically to " + keyStyle.Render("~/.config/gapistotle/config.conf") + "\n"
 	content += "  • Custom themes go in " + keyStyle.Render("~/.config/gapistotle/themes/") + "\n\n"
 
 	content += lipgloss.NewStyle().Foreground(m.currentTheme.HelpColor).Render("Press ESC to return | ↑↓/jk: scroll | g/G: top/bottom | PgUp/PgDn: page")
@@ -434,4 +512,108 @@ func (m model) renderHelp() string {
 	}
 
 	return m.borderedContentStyle().Render(visibleContent)
+}
+
+func (m model) renderFullTestResults() string {
+	contentHeight := m.height - MenuBarH
+
+	// Get test results for the package
+	result, exists := m.testResults[m.fullScreenPackage]
+	if !exists {
+		// No results - should not happen but handle gracefully
+		return m.borderedContentStyle().Render("No test results available\n\nPress ESC to return")
+	}
+
+	// Generate full test output
+	fullContent := FormatTestResult(result, m.currentTheme)
+
+	// Handle scrolling
+	contentLines := strings.Split(fullContent, "\n")
+	totalLines := len(contentLines)
+	visibleLines := contentHeight - 2 // Account for border padding
+
+	// Calculate max scroll
+	maxScroll := totalLines - visibleLines
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	// Ensure scroll is within bounds
+	if m.fullScreenScroll > maxScroll {
+		// Update model's scroll to capped value (mutation during render is ok for bounds)
+		m.fullScreenScroll = maxScroll
+	}
+	if m.fullScreenScroll < 0 {
+		m.fullScreenScroll = 0
+	}
+
+	// Extract visible portion of content
+	var visibleContent string
+	if totalLines > visibleLines {
+		endLine := m.fullScreenScroll + visibleLines
+		if endLine > totalLines {
+			endLine = totalLines
+		}
+		visibleContent = strings.Join(contentLines[m.fullScreenScroll:endLine], "\n")
+	} else {
+		visibleContent = fullContent
+	}
+
+	// Add help bar
+	helpStyle := m.helpBarStyle()
+	helpText := helpStyle.Render("↑↓/jk: scroll | g/G: top/bottom | PgUp/PgDn: page | ESC: return | q: quit")
+
+	return m.borderedContentStyle().Render(visibleContent) + "\n" + helpText
+}
+
+func (m model) renderFullCoverageGaps() string {
+	contentHeight := m.height - MenuBarH
+
+	// Get test results for the package
+	result, exists := m.testResults[m.fullScreenPackage]
+	if !exists {
+		// No results - should not happen but handle gracefully
+		return m.borderedContentStyle().Render("No test results available\n\nPress ESC to return")
+	}
+
+	// Generate full coverage gaps output
+	fullContent := FormatCoverageGaps(result, m.currentTheme)
+
+	// Handle scrolling
+	contentLines := strings.Split(fullContent, "\n")
+	totalLines := len(contentLines)
+	visibleLines := contentHeight - 2 // Account for border padding
+
+	// Calculate max scroll
+	maxScroll := totalLines - visibleLines
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	// Ensure scroll is within bounds
+	if m.fullScreenScroll > maxScroll {
+		// Update model's scroll to capped value (mutation during render is ok for bounds)
+		m.fullScreenScroll = maxScroll
+	}
+	if m.fullScreenScroll < 0 {
+		m.fullScreenScroll = 0
+	}
+
+	// Extract visible portion of content
+	var visibleContent string
+	if totalLines > visibleLines {
+		endLine := m.fullScreenScroll + visibleLines
+		if endLine > totalLines {
+			endLine = totalLines
+		}
+		visibleContent = strings.Join(contentLines[m.fullScreenScroll:endLine], "\n")
+	} else {
+		visibleContent = fullContent
+	}
+
+	// Add help bar
+	helpStyle := m.helpBarStyle()
+	helpText := helpStyle.Render("↑↓/jk: scroll | g/G: top/bottom | PgUp/PgDn: page | ESC: return | q: quit")
+
+	return m.borderedContentStyle().Render(visibleContent) + "\n" + helpText
 }

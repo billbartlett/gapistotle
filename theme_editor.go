@@ -438,7 +438,7 @@ func (te *ThemeEditorState) RenderPreview() string {
 	// Show help bar text
 	helpStyle := lipgloss.NewStyle().Foreground(te.editingTheme.HelpColor)
 	result += lipgloss.NewStyle().Bold(true).Render("Help Bar:") + "\n"
-	result += helpStyle.Render("F1: menu | ↑↓/jk: scroll | Tab: switch panel") + "\n"
+	result += helpStyle.Render("`: menu | ↑↓/jk: scroll | Tab: switch panel") + "\n"
 
 	return result
 }

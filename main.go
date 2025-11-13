@@ -4,10 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+const version = "0.1.0"
 
 // UI constants
 const (
@@ -22,11 +26,23 @@ type appScreen int
 
 const (
 	screenMain appScreen = iota
+	screenTestsMenu
+	screenTestModeSelection
 	screenThemeMenu
 	screenThemeSelection
 	screenThemeEditor
 	screenSettings
 	screenHelp
+	screenFullTestResults
+	screenFullCoverageGaps
+)
+
+type testMode string
+
+const (
+	testModeUnit        testMode = "unit"
+	testModeIntegration testMode = "integration"
+	testModeAll         testMode = "all"
 )
 
 type panelFocus int
@@ -85,6 +101,15 @@ type model struct {
 	menuIndex      int
 	currentScreen  appScreen
 
+	// Tests menu state
+	testsMenuIndex int
+	testsMenuItems []string
+
+	// Test mode state
+	currentTestMode     testMode
+	testModeIndex       int
+	testModeItems       []string
+
 	// Theme menu state
 	themeMenuIndex     int
 	themeMenuItems     []string
@@ -106,6 +131,9 @@ type model struct {
 	testErrors map[string]error
 	// Tests currently running - maps package name to running state
 	testsRunning map[string]bool
+	// Sequential test execution state
+	testQueue        []TestPackage // Packages waiting to be tested
+	runAllInProgress bool          // Whether "Run All" is active
 	// Scan error - error from initial package scan
 	scanError error
 
@@ -117,6 +145,10 @@ type model struct {
 	summaryButtonIndex int // 0 = TEST DETAILS, 1 = COVERAGE GAPS
 	helpScroll         int // Scroll position in help screen
 	helpMaxScroll      int // Max scroll lines in help screen
+
+	// Full-screen test results
+	fullScreenPackage string // Package name for full-screen results view
+	fullScreenScroll  int    // Scroll position in full-screen view
 }
 
 func initialModel(scanPath string, flagConfigPath string) model {
@@ -152,6 +184,29 @@ func initialModel(scanPath string, flagConfigPath string) model {
 	// Find the index of the current theme
 	themeIdx := findThemeIndex(themeNames, config.CurrentTheme)
 
+	// Get absolute path for directory-specific test mode lookup
+	absScanPath, err := filepath.Abs(scanPath)
+	if err != nil {
+		absScanPath = scanPath // Fallback to original if abs fails
+	}
+
+	// Load test mode for this directory (default to unit if not found)
+	currentMode := testModeUnit
+	if savedMode, exists := config.TestModeByDir[absScanPath]; exists {
+		currentMode = testMode(savedMode)
+	}
+
+	// Set the test mode index based on loaded mode
+	modeIndex := 0
+	switch currentMode {
+	case testModeUnit:
+		modeIndex = 0
+	case testModeIntegration:
+		modeIndex = 1
+	case testModeAll:
+		modeIndex = 2
+	}
+
 	return model{
 		leftPanelWidth:      config.LeftPanelWidth,
 		testPackages:        packages,
@@ -164,6 +219,11 @@ func initialModel(scanPath string, flagConfigPath string) model {
 		menuItems:           []string{"Settings", "Tests", "Theme", "Help", "Quit"},
 		menuIndex:           0,
 		currentScreen:       screenMain,
+		testsMenuIndex:      0,
+		testsMenuItems:      []string{"Know It All", "Test Mode"},
+		currentTestMode:     currentMode,
+		testModeIndex:       modeIndex,
+		testModeItems:       []string{"Unit", "Integration", "All"},
 		themeMenuIndex:      0,
 		themeMenuItems:      []string{"Select Theme", "Edit Theme", "Reload Themes"},
 		themeSelectionMode:  themeSelectModeApply,
@@ -197,10 +257,24 @@ func findThemeIndex(themeNames []string, themeName string) int {
 	return 0
 }
 
+// getTestModeForPath returns the test mode for a given directory path
+func (m *model) getTestModeForPath(dirPath string) testMode {
+	absPath, err := filepath.Abs(dirPath)
+	if err != nil {
+		absPath = dirPath
+	}
+
+	if savedMode, exists := m.config.TestModeByDir[absPath]; exists {
+		return testMode(savedMode)
+	}
+
+	return testModeUnit // Default to unit if not configured
+}
+
 // runTestsCmd runs tests for a package and returns the result
-func runTestsCmd(packageDir string, packageName string) tea.Cmd {
+func runTestsCmd(packageDir string, packageName string, mode testMode) tea.Cmd {
 	return func() tea.Msg {
-		result, err := RunTests(packageDir, packageName)
+		result, err := RunTests(packageDir, packageName, mode)
 		if err != nil {
 			return testErrorMsg{packageName: packageName, err: err}
 		}
@@ -223,6 +297,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Clear running state
 			delete(m.testsRunning, msg.result.PackagePath)
 		}
+
+		// If "Run All" is in progress, start next test in queue
+		if m.runAllInProgress && len(m.testQueue) > 0 {
+			pkg := m.testQueue[0]
+			m.testQueue = m.testQueue[1:]
+			// Clear old results and errors
+			delete(m.testResults, pkg.Name)
+			delete(m.testErrors, pkg.Name)
+			// Mark test as running
+			m.testsRunning[pkg.Name] = true
+			// Use test mode for this specific package's directory
+			pkgMode := m.getTestModeForPath(pkg.Path)
+			return &m, runTestsCmd(pkg.Path, pkg.Name, pkgMode)
+		} else if m.runAllInProgress && len(m.testQueue) == 0 {
+			// All tests complete
+			m.runAllInProgress = false
+		}
+
 		return &m, nil
 
 	case testErrorMsg:
@@ -230,6 +322,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.testErrors[msg.packageName] = msg.err
 		// Clear running state
 		delete(m.testsRunning, msg.packageName)
+
+		// If "Run All" is in progress, continue with next test even after error
+		if m.runAllInProgress && len(m.testQueue) > 0 {
+			pkg := m.testQueue[0]
+			m.testQueue = m.testQueue[1:]
+			// Clear old results and errors
+			delete(m.testResults, pkg.Name)
+			delete(m.testErrors, pkg.Name)
+			// Mark test as running
+			m.testsRunning[pkg.Name] = true
+			// Use test mode for this specific package's directory
+			pkgMode := m.getTestModeForPath(pkg.Path)
+			return &m, runTestsCmd(pkg.Path, pkg.Name, pkgMode)
+		} else if m.runAllInProgress && len(m.testQueue) == 0 {
+			// All tests complete (or stopped due to errors)
+			m.runAllInProgress = false
+		}
+
 		return &m, nil
 
 	case tea.KeyMsg:
@@ -238,7 +348,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return &m, nil
 		}
 
-		// Priority 2: Handle global keys (ctrl+c, F1, ESC)
+		// Priority 2: Handle global keys (ctrl+c, `, ESC)
 		if handled, cmd := handleGlobalKeys(&m, msg); handled {
 			return &m, cmd
 		}
@@ -252,6 +362,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if handled, cmd := handleMainScreenKeys(&m, msg); handled {
 			return &m, cmd
 		}
+		if handled, cmd := handleTestsMenuKeys(&m, msg); handled {
+			return &m, cmd
+		}
+		if handled, cmd := handleTestModeSelectionKeys(&m, msg); handled {
+			return &m, cmd
+		}
 		if handled, cmd := handleThemeMenuKeys(&m, msg); handled {
 			return &m, cmd
 		}
@@ -259,6 +375,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return &m, cmd
 		}
 		if handled, cmd := handleHelpKeys(&m, msg); handled {
+			return &m, cmd
+		}
+		if handled, cmd := handleFullScreenKeys(&m, msg); handled {
 			return &m, cmd
 		}
 		if handled, cmd := handleThemeEditorKeys(&m, msg); handled {
@@ -282,6 +401,10 @@ func (m *model) View() string {
 	switch m.currentScreen {
 	case screenMain:
 		content = m.renderMainScreen()
+	case screenTestsMenu:
+		content = m.renderTestsMenu()
+	case screenTestModeSelection:
+		content = m.renderTestModeSelection()
 	case screenThemeMenu:
 		content = m.renderThemeMenu()
 	case screenThemeSelection:
@@ -292,6 +415,10 @@ func (m *model) View() string {
 		content = m.renderSettings()
 	case screenHelp:
 		content = m.renderHelp()
+	case screenFullTestResults:
+		content = m.renderFullTestResults()
+	case screenFullCoverageGaps:
+		content = m.renderFullCoverageGaps()
 	default:
 		content = m.renderMainScreen()
 	}
@@ -302,7 +429,15 @@ func (m *model) View() string {
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("c", "", "path to config file")
+	showVersion := flag.Bool("version", false, "show version information")
+	flag.BoolVar(showVersion, "v", false, "show version information (shorthand)")
 	flag.Parse()
+
+	// Handle version flag
+	if *showVersion {
+		fmt.Printf("gapistotle %s [%s]\n", version, runtime.Version())
+		os.Exit(0)
+	}
 
 	// Get scan path from remaining args, or use current directory
 	scanPath := "."

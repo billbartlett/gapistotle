@@ -10,13 +10,14 @@ import (
 
 type Config struct {
 	CurrentTheme         string
-	ThemesDirectory      string // Custom path for themes (empty = use XDG default)
+	ThemesDirectory      string            // Custom path for themes (empty = use XDG default)
 	LeftPanelWidth       int
 	MinPanelWidth        int
 	MaxPanelWidthPercent int
 	PanelResizeIncrement int
-	LogPath              string // Path to log file (empty = no logging)
-	LogLevel             string // Log level: debug, info, warn, error
+	LogPath              string            // Path to log file (empty = no logging)
+	LogLevel             string            // Log level: debug, info, warn, error
+	TestModeByDir        map[string]string // Test mode per directory (absolute path -> mode)
 }
 
 func getConfigPath() string {
@@ -62,6 +63,7 @@ func LoadConfig(configPath string) Config {
 		PanelResizeIncrement: panelResizeIncrement,
 		LogPath:              "/tmp/gapistotle.log",
 		LogLevel:             "debug",
+		TestModeByDir:        make(map[string]string),
 	}
 
 	// Try to migrate from old location if new location doesn't exist
@@ -89,6 +91,13 @@ func LoadConfig(configPath string) Config {
 
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
+
+		// Check for testMode.* entries
+		if strings.HasPrefix(key, "testMode.") {
+			dirPath := strings.TrimPrefix(key, "testMode.")
+			config.TestModeByDir[dirPath] = value
+			continue
+		}
 
 		switch key {
 		case "currentTheme":
@@ -152,6 +161,14 @@ func SaveConfig(config Config, configPath string) error {
 	writer.WriteString("\n# Logging settings\n")
 	writer.WriteString("logPath=" + config.LogPath + "\n")
 	writer.WriteString("logLevel=" + config.LogLevel + "\n")
+
+	// Write test mode by directory
+	if len(config.TestModeByDir) > 0 {
+		writer.WriteString("\n# Test mode per directory\n")
+		for dirPath, mode := range config.TestModeByDir {
+			writer.WriteString("testMode." + dirPath + "=" + mode + "\n")
+		}
+	}
 
 	return writer.Flush()
 }

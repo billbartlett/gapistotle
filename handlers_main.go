@@ -35,7 +35,9 @@ func handleMainScreenKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 				m.rightPanelView = viewSummary
 				m.summaryButtonIndex = 0
 				m.rightPanelScroll = 0
-				return true, runTestsCmd(pkg.Path, pkg.Name)
+				// Use test mode for this specific package's directory
+				pkgMode := m.getTestModeForPath(pkg.Path)
+				return true, runTestsCmd(pkg.Path, pkg.Name, pkgMode)
 			}
 		} else if m.currentFocus == focusRightPanel && m.rightPanelView == viewSummary {
 			// User pressed Enter on a button - navigate based on which button
@@ -48,6 +50,27 @@ func handleMainScreenKeys(m *model, msg tea.KeyMsg) (bool, tea.Cmd) {
 			}
 			m.rightPanelScroll = 0
 			return true, nil
+		}
+		return true, nil
+
+	case "f":
+		// Show full-screen mode based on which button is selected
+		if m.selectedIndex < len(m.testPackages) {
+			pkg := m.testPackages[m.selectedIndex]
+			// Check if we have results for this package
+			if _, exists := m.testResults[pkg.Name]; exists {
+				m.fullScreenPackage = pkg.Name
+				m.fullScreenScroll = 0
+				// Context-aware: check which button is selected in summary view
+				if m.summaryButtonIndex == 0 {
+					// TEST DETAILS button selected
+					m.currentScreen = screenFullTestResults
+				} else {
+					// COVERAGE GAPS button selected
+					m.currentScreen = screenFullCoverageGaps
+				}
+				return true, nil
+			}
 		}
 		return true, nil
 
