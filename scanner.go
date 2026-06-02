@@ -59,8 +59,11 @@ func ScanForTests(rootPath string) ([]TestPackage, error) {
 			return err
 		}
 
-		// Skip hidden directories and vendor
-		if info.IsDir() && (strings.HasPrefix(info.Name(), ".") || info.Name() == "vendor") {
+		// Skip hidden directories and vendor. Exclude the rootPath itself,
+		// since filepath.Walk reports it first and info.Name() for a path
+		// like "." is "." — which would otherwise match the dot-prefix
+		// check and skip the entire scan.
+		if info.IsDir() && path != rootPath && (strings.HasPrefix(info.Name(), ".") || info.Name() == "vendor") {
 			return filepath.SkipDir
 		}
 
