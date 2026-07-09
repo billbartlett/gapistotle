@@ -51,7 +51,7 @@ cd gapistotle
 go build -o gapistotle .
 ```
 
-move the binary somewhere in your PATH:
+optionally move the binary to somewhere in your PATH:
 ```bash
 sudo mv gapistotle /usr/local/bin/
 ```
